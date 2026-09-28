@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+
+# Env / secrets — never commit these
+.env
+.env.*
+*.pem
+*.key
+iam/trust-policy.local.json
+ci/oidc-trust-policy.local.json
+ci/ecr-push-policy.local.json
+
+# Audit log local data
+audit_log/*.db
+audit_log/*.sqlite3
+audit_log/*.jsonl
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Personal reference notes — not part of the project's documentation
+docs/docker-concepts.md
+docs/ci-cd-concepts.md

@@ -1,0 +1,30 @@
+# Note: patterns need an explicit **/ prefix to match at any depth — a bare
+# `__pycache__/` only matches one at the context root, not e.g. audit_log/__pycache__/.
+
+# Python
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+
+# Version control
+.git/
+
+# Env / secrets — never end up in an image layer
+.env
+.env.*
+
+# Local dev data — never belongs in a built image
+**/*.db
+**/*.jsonl
+
+# Tests don't need to ship in the runtime image
+**/tests/
+
+# Dev-only files that don't belong in a runtime image
+**/requirements-dev.txt
+**/Dockerfile
