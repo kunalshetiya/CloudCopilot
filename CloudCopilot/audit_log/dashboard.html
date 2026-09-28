@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CloudCopilot Audit Trail</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page-plane: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --good: #0ca30c;
+    --critical: #d03b3b;
+    --series-registry: #2a78d6; /* categorical slot 1: blue */
+    --series-fallback: #eb6834; /* categorical slot 2: orange */
+    --series-suggestion: #1baf7a; /* categorical slot 3: aqua */
+    --sequential: #2a78d6; /* magnitude bars: single hue, blue */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page-plane: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --gridline: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --good: #0ca30c;
+      --critical: #e66767;
+      --series-registry: #3987e5;
+      --series-fallback: #d95926;
+      --series-suggestion: #199e70;
+      --sequential: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page-plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --good: #0ca30c;
+    --critical: #e66767;
+    --series-registry: #3987e5;
+    --series-fallback: #d95926;
+    --series-suggestion: #199e70;
+    --sequential: #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 20px 64px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 20px; max-width: 640px; }
+  .subtitle code { font-size: 12px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+  .filters {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .filters select, .filters button {
+    font: inherit; font-size: 13px;
+    border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-primary);
+    border-radius: 6px; padding: 6px 10px; cursor: pointer;
+  }
+  .filters button { color: var(--text-primary); font-weight: 600; }
+  .filters label { font-size: 12px; color: var(--text-secondary); margin-right: -4px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .tile .label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .tile .value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.good { background: var(--good); }
+  .dot.critical { background: var(--critical); }
+
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 700px) { .charts { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px;
+  }
+  .card h2 { font-size: 13px; font-weight: 600; margin: 0 0 12px; color: var(--text-primary); }
+  .legend { display: flex; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  .bar-row { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-label { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { position: relative; height: 24px; background: transparent; }
+  .bar-fill {
+    height: 20px; margin-top: 2px; border-radius: 4px 4px 4px 4px;
+    min-width: 3px; transition: filter 0.1s;
+  }
+  .bar-fill:hover, .bar-fill:focus { filter: brightness(1.12); outline: none; }
+  .bar-value { font-size: 12px; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--gridline); white-space: nowrap; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--gridline); color: var(--text-primary); vertical-align: top; }
+  td.q { color: var(--text-secondary); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+  .path-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+  .path-chip .swatch { width: 8px; height: 8px; }
+
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 10;
+    background: var(--text-primary); color: var(--page-plane);
+    font-size: 12px; padding: 6px 9px; border-radius: 6px;
+    max-width: 260px; opacity: 0; transition: opacity 0.08s;
+  }
+  .tooltip.show { opacity: 1; }
+  .tooltip .t-value { font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="viz-root wrap">
+  <h1>CloudCopilot Audit Trail</h1>
+  <p class="subtitle">Every question asked and every AWS call made — read-only, straight from the
+    audit log. Shows events recorded by this service only: questions run via Docker Compose
+    (or anything else pointed at <code>AUDIT_LOG_URL</code>). A bare local run
+    (<code>python -m agent</code> with no <code>AUDIT_LOG_URL</code> set) logs to
+    <code>audit_log/events.jsonl</code> on that machine instead and won't show up here.</p>
+
+  <div class="filters">
+    <label for="f-path">Path</label>
+    <select id="f-path">
+      <option value="">All paths</option>
+      <option value="registry">registry</option>
+      <option value="fallback">fallback</option>
+      <option value="suggestion">suggestion</option>
+    </select>
+    <label for="f-service">Service</label>
+    <select id="f-service"><option value="">All services</option></select>
+    <label for="f-success">Result</label>
+    <select id="f-success">
+      <option value="">All results</option>
+      <option value="true">Success</option>
+      <option value="false">Declined / failed</option>
+    </select>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
+
+  <div class="kpi-row">
+    <div class="tile"><div class="label">Questions asked</div><div class="value" id="kpi-questions">–</div></div>
+    <div class="tile"><div class="label">AWS calls made</div><div class="value" id="kpi-calls">–</div></div>
+    <div class="tile"><div class="label"><span class="dot good"></span>Success rate</div><div class="value" id="kpi-success">–</div></div>
+    <div class="tile"><div class="label"><span class="dot critical"></span>Declined / failed</div><div class="value" id="kpi-declined">–</div></div>
+  </div>
+
+  <div class="charts">
+    <div class="card">
+      <h2>Calls by path</h2>
+      <div class="legend" id="path-legend"></div>
+      <div id="chart-path"></div>
+    </div>
+    <div class="card">
+      <h2>Calls by AWS service</h2>
+      <div id="chart-service"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent events</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Question</th><th>Path</th>
+          <th class="num" title="AWS calls made for this question, within the events shown here">Calls</th>
+          <th>Service : operation</th><th>Result</th><th class="num">Duration</th>
+        </tr></thead>
+        <tbody id="events-body"></tbody>
+      </table>
+    </div>
+    <div id="events-empty" class="empty" style="display:none">No events match the current filters.</div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+
+<script>
+  const tooltip = document.getElementById('tooltip');
+
+  function moveTooltip(evt) {
+    const x = evt.clientX ?? evt.target.getBoundingClientRect().right;
+    const y = evt.clientY ?? evt.target.getBoundingClientRect().top;
+    tooltip.style.left = Math.min(x + 12, window.innerWidth - 270) + 'px';
+    tooltip.style.top = Math.max(y - 10, 8) + 'px';
+  }
+  function hideTooltip() { tooltip.classList.remove('show'); }
+
+  function tooltipRow(labelText, valueText) {
+    const strong = document.createElement('span');
+    strong.className = 't-value';
+    strong.textContent = valueText;
+    const wrap = document.createElement('div');
+    wrap.append(strong, document.createTextNode(' ' + labelText));
+    return wrap;
+  }
+
+  function attachTooltip(el, labelText, valueText) {
+    const show = (evt) => {
+      tooltip.replaceChildren(tooltipRow(labelText, valueText));
+      tooltip.classList.add('show');
+      moveTooltip(evt);
+    };
+    el.addEventListener('pointerenter', show);
+    el.addEventListener('pointermove', moveTooltip);
+    el.addEventListener('pointerleave', hideTooltip);
+    el.addEventListener('focus', show);
+    el.addEventListener('blur', hideTooltip);
+  }
+
+  // Fixed display order for categorical series — color follows the entity, and
+  // so does position; never let a filter or a SQL GROUP BY silently reorder it.
+  const PATH_ORDER = ['registry', 'fallback', 'suggestion'];
+
+  function renderCategoricalChart(container, legendEl, counts, colorMap) {
+    container.replaceChildren();
+    legendEl.replaceChildren();
+    const entries = Object.entries(counts).sort(
+      (a, b) => PATH_ORDER.indexOf(a[0]) - PATH_ORDER.indexOf(b[0])
+    );
+    if (!entries.length) { container.append(emptyNote()); return; }
+    const max = Math.max(...entries.map(([, v]) => v));
+    for (const [key, value] of entries) {
+      legendEl.append(legendItem(key, colorMap[key] || 'var(--text-muted)'));
+      container.append(barRow(key, value, max, colorMap[key] || 'var(--text-muted)'));
+    }
+  }
+
+  function renderSequentialChart(container, counts) {
+    container.replaceChildren();
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) { container.append(emptyNote()); return; }
+    const max = entries[0][1];
+    for (const [key, value] of entries) {
+      container.append(barRow(key, value, max, 'var(--sequential)'));
+    }
+  }
+
+  function emptyNote() {
+    const p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = 'No calls recorded yet for this filter.';
+    return p;
+  }
+
+  function legendItem(name, color) {
+    const row = document.createElement('div');
+    row.className = 'legend-item';
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = color;
+    row.append(sw, document.createTextNode(name));
+    return row;
+  }
+
+  function barRow(label, value, max, color) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'bar-label';
+    labelEl.textContent = label;
+    labelEl.title = label;
+
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill';
+    fill.tabIndex = 0;
+    const pct = max > 0 ? Math.max((value / max) * 100, 2) : 2;
+    fill.style.width = pct + '%';
+    fill.style.background = color;
+    track.append(fill);
+
+    const valueEl = document.createElement('div');
+    valueEl.className = 'bar-value';
+    valueEl.textContent = value;
+
+    attachTooltip(fill, label, String(value) + ' call' + (value === 1 ? '' : 's'));
+
+    row.append(labelEl, track, valueEl);
+    return row;
+  }
+
+  function fmtPct(n) { return (n * 100).toFixed(0) + '%'; }
+
+  // Stored timestamps are UTC (agent/router.py's datetime.now(UTC).isoformat()).
+  // Render in whoever's actually viewing this dashboard's local timezone, not a
+  // hardcoded offset — a naive string-slice of the raw value stayed in UTC and
+  // read as "wrong" to anyone not in that timezone.
+  function formatLocalTimestamp(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+  }
+
+  function statusChip(success, reason) {
+    const span = document.createElement('span');
+    span.className = 'status';
+    const dot = document.createElement('span');
+    dot.className = 'dot ' + (success ? 'good' : 'critical');
+    span.append(dot, document.createTextNode(success ? 'Success' : 'Declined'));
+    if (!success && reason) {
+      span.append(document.createTextNode(' (' + reason + ')'));
+    }
+    return span;
+  }
+
+  function pathChip(path) {
+    const span = document.createElement('span');
+    span.className = 'path-chip';
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = 'var(--series-' + path + ')';
+    span.append(sw, document.createTextNode(path));
+    return span;
+  }
+
+  function currentFilters() {
+    const path = document.getElementById('f-path').value;
+    const service = document.getElementById('f-service').value;
+    const success = document.getElementById('f-success').value;
+    const params = new URLSearchParams();
+    if (path) params.set('path', path);
+    if (service) params.set('service', service);
+    if (success) params.set('success', success);
+    return params;
+  }
+
+  function populateServiceOptions(services) {
+    const sel = document.getElementById('f-service');
+    const current = sel.value;
+    sel.replaceChildren(new Option('All services', ''));
+    for (const name of Object.keys(services).sort()) {
+      sel.append(new Option(name, name));
+    }
+    sel.value = current;
+  }
+
+  async function refresh() {
+    const params = currentFilters();
+    const [stats, events] = await Promise.all([
+      fetch('/stats?' + params.toString()).then((r) => r.json()),
+      fetch('/events?limit=50&' + params.toString()).then((r) => r.json()),
+    ]);
+
+    document.getElementById('kpi-questions').textContent = stats.total_questions;
+    document.getElementById('kpi-calls').textContent = stats.total_events;
+    const rate = stats.total_events > 0 ? stats.success_count / stats.total_events : 0;
+    document.getElementById('kpi-success').textContent = stats.total_events > 0 ? fmtPct(rate) : '–';
+    document.getElementById('kpi-declined').textContent = stats.failure_count;
+
+    renderCategoricalChart(
+      document.getElementById('chart-path'),
+      document.getElementById('path-legend'),
+      stats.by_path,
+      { registry: 'var(--series-registry)', fallback: 'var(--series-fallback)', suggestion: 'var(--series-suggestion)' }
+    );
+    renderSequentialChart(document.getElementById('chart-service'), stats.by_service);
+
+    if (!document.getElementById('f-service').dataset.populated) {
+      populateServiceOptions(stats.by_service);
+      document.getElementById('f-service').dataset.populated = '1';
+    }
+
+    // How many AWS calls each question triggered, within just this fetched page —
+    // one audit row per real call, not per question (docs/context.md 7.5), so a
+    // question sharing question_id across several rows genuinely means several
+    // distinct calls, not a bug.
+    const callsPerQuestion = {};
+    for (const ev of events) {
+      callsPerQuestion[ev.question_id] = (callsPerQuestion[ev.question_id] || 0) + 1;
+    }
+
+    const body = document.getElementById('events-body');
+    body.replaceChildren();
+    document.getElementById('events-empty').style.display = events.length ? 'none' : 'block';
+    for (const ev of events) {
+      const tr = document.createElement('tr');
+
+      const tTime = document.createElement('td');
+      tTime.textContent = formatLocalTimestamp(ev.timestamp);
+
+      const tQ = document.createElement('td');
+      tQ.className = 'q';
+      tQ.textContent = ev.question;
+      tQ.title = ev.question;
+
+      const tPath = document.createElement('td');
+      tPath.append(pathChip(ev.path));
+
+      const tCalls = document.createElement('td');
+      tCalls.className = 'num';
+      tCalls.textContent = callsPerQuestion[ev.question_id];
+
+      const tOp = document.createElement('td');
+      tOp.textContent = ev.service ? ev.service + ' : ' + (ev.operation || '') : '—';
+
+      const tStatus = document.createElement('td');
+      tStatus.append(statusChip(ev.success, ev.preview));
+
+      const tDur = document.createElement('td');
+      tDur.className = 'num';
+      tDur.textContent = ev.duration_seconds != null ? ev.duration_seconds.toFixed(2) + 's' : '—';
+
+      tr.append(tTime, tQ, tPath, tCalls, tOp, tStatus, tDur);
+      body.append(tr);
+    }
+  }
+
+  document.getElementById('refresh').addEventListener('click', refresh);
+  document.getElementById('f-path').addEventListener('change', refresh);
+  document.getElementById('f-service').addEventListener('change', refresh);
+  document.getElementById('f-success').addEventListener('change', refresh);
+  refresh();
+</script>
+</body>
+</html>

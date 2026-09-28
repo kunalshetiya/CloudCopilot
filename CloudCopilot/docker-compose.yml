@@ -1,0 +1,47 @@
+services:
+  audit-log:
+    build:
+      context: .
+      dockerfile: audit_log/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - audit-log-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - cloudcopilot-net
+
+  # Not a long-running service — a CLI tool you run once and get output from.
+  # `profiles` keeps it out of a plain `docker compose up` (which would try to
+  # start it with no real terminal attached); use `docker compose run --rm
+  # agent "<question>"` instead.
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    profiles: ["cli"]
+    env_file:
+      - .env
+    environment:
+      AUDIT_LOG_URL: http://audit-log:8001
+    volumes:
+      - ${HOME}/.aws:/home/appuser/.aws
+    depends_on:
+      audit-log:
+        condition: service_healthy
+    networks:
+      - cloudcopilot-net
+    stdin_open: true
+    tty: true
+
+networks:
+  cloudcopilot-net:
+    driver: bridge
+
+volumes:
+  audit-log-data:
